@@ -5,7 +5,6 @@ export const loader: LoaderFunction = async({}) => {
   const baseAPI = "https://api.eloverblik.dk"
   
   const token = process.env.EL_TOKEN
-  console.log(token)
   const accessToken = await fetch(baseAPI + "​/api​/token", {
     headers: {
       Authorization: `Bearer ${token}`
