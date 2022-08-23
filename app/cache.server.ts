@@ -38,6 +38,7 @@ export class Cache<T> {
   }
 
   public async getOrFetchItem(getter: () => Promise<T>): Promise<T> {
+    if (process.env.NODE_ENV !== "development") return await getter()
     const cachedItem = this.getItem();
     if (cachedItem) return cachedItem;
     const item = await getter();
