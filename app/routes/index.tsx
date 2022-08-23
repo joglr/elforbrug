@@ -32,9 +32,6 @@ async function getData() {
   });
 
   invariant(accessToken, "No access token");
-  console.log("================================")
-  console.log(accessToken)
-  console.log("================================")
 
   console.log("Fetching list of metering points");
   const meteringEndpointsResult =
@@ -50,7 +47,6 @@ async function getData() {
       meteringPoint: meteringPointIDs,
     },
   };
-  console.log(meteringPointsRequest)
 
   const now = new Date();
   const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
