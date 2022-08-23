@@ -1,5 +1,4 @@
 import { useLoaderData } from "@remix-run/react";
-import type { RequestParams} from "~/eloverblik-api";
 import {
   EloverblikApi
   // MeteringPointApiDtoListApiResponse,
@@ -10,68 +9,105 @@ import { useDimensions } from "~/hooks";
 import { useRef } from "react";
 import { Cache } from "~/cache.server";
 
-// Create a new cache that expires after 24 hours
-const tokenCache = new Cache<string>("token", 24 * 60 * 60 * 1000);
-// Create a new cache that never expires
-const dataCache = new Cache<Awaited<ReturnType<typeof getData>>>("data", null)
-
 async function getData() {
-  const baseAPI = "https://api.eloverblik.dk/customerapi/";
+  const tokenCache = new Cache<string>("token", 24 * 60 * 60 * 1000);
+  const baseAPI = "https://api.eloverblik.dk/customerapi";
   const refreshToken = process.env.EL_TOKEN;
 
   invariant(refreshToken, "Missing refresh token, specify it as EL_TOKEN environment variable");
 
-  const api = new EloverblikApi({
-    baseUrl: baseAPI,
-    // customFetch: cachedFetch,
-  });
-
   const accessToken = await tokenCache.getOrFetchItem(async () => await getAccessToken(baseAPI, refreshToken))
 
-  const authorizedRequestArgs: RequestParams = {
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-    }
-  };
+  const headers: HeadersInit = {
+    Authorization: `Bearer ${accessToken}`,
+    "Content-Type": "application/json",
+    "Accept": "application/json"
+  }
+  const api = new EloverblikApi({
+    baseUrl: baseAPI,
+    baseApiParams: {
+      headers,
+      format: undefined
+    },
+  });
 
-  // console.log(accessToken)
   invariant(accessToken, "No access token");
+  console.log("================================")
+  console.log(accessToken)
+  console.log("================================")
 
   console.log("Fetching list of metering points");
   const meteringEndpointsResult =
-    await api.api.meteringpointsMeteringpointsList({}, authorizedRequestArgs);
+    await api.api.meteringpointsMeteringpointsList({});
   // console.log(meteringEndpoints.data)
   const meteringEndpoints = meteringEndpointsResult.data.result!;
-  // console.log(meteringEndpoints);
 
-  const meteringPointIDs = meteringEndpoints.map((mp) => mp.meteringPointId!);
+  console.log("Done fetching list of metering points. Metering points:", meteringEndpoints.length);
+
+  const meteringPointIDs = meteringEndpoints.map((mp) => (mp.meteringPointId!));
   const meteringPointsRequest = {
     meteringPoints: {
       meteringPoint: meteringPointIDs,
     },
   };
+  console.log(meteringPointsRequest)
 
   const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
   const oneMonthAgo = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-
   console.log("Fetching meterdata timeseries of metering points");
-  const meteringPointTimeSeries = await api.api.meterdataGettimeseriesCreate(
-    formatDate(oneMonthAgo),
-    formatDate(now),
+
+  // const response = await fetch(`${baseAPI}/api/meterdata/gettimeseries/${formatDate(oneMonthAgo)}/${formatDate(start)}/${"Day"}`, {
+  //   method: "post",
+  //   // headers,
+  //   // body: JSON.stringify(meteringPointsRequest),
+  //   "mode": "cors",
+  //   "credentials": "include",
+  //   headers: {
+  //     "accept": "application/json",
+  //     "accept-language": "da-DK,da;q=0.9,en-DK;q=0.8,en;q=0.7,en-US;q=0.6,sv;q=0.5",
+  //     "authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlblR5cGUiOiJDdXN0b21lckFQSV9EYXRhQWNjZXNzIiwidG9rZW5pZCI6ImE4OTA3NmNmLTk4NDUtNDY5OS1hMTZhLWQ0MGUzMjg4MjlhNSIsIndlYkFwcCI6WyJDdXN0b21lckFwaSIsIkN1c3RvbWVyQXBpIiwiQ3VzdG9tZXJBcHBBcGkiXSwianRpIjoiYTg5MDc2Y2YtOTg0NS00Njk5LWExNmEtZDQwZTMyODgyOWE1IiwiaHR0cDovL3NjaGVtYXMueG1sc29hcC5vcmcvd3MvMjAwNS8wNS9pZGVudGl0eS9jbGFpbXMvbmFtZWlkZW50aWZpZXIiOiJQSUQ6OTIwOC0yMDAyLTItMDcxMTA0NjQ2NzczIiwiaHR0cDovL3NjaGVtYXMueG1sc29hcC5vcmcvd3MvMjAwNS8wNS9pZGVudGl0eS9jbGFpbXMvZ2l2ZW5uYW1lIjoiSm9uYXMgR2xlcnVwIFLDuHNzdW0iLCJsb2dpblR5cGUiOiJLZXlDYXJkIiwicGlkIjoiOTIwOC0yMDAyLTItMDcxMTA0NjQ2NzczIiwidHlwIjoiUE9DRVMiLCJ1c2VySWQiOiIxMjI2ODYiLCJleHAiOjE2NjEzNTU2MjgsImlzcyI6IkVuZXJnaW5ldCIsInRva2VuTmFtZSI6ImFwcCIsImF1ZCI6IkVuZXJnaW5ldCJ9.XNjqqmzqZCCGakE7-nO3BvxkXrdAz-uomZ15TL0TOco",
+  //     "content-type": "application/json",
+  //     "sec-ch-ua": "\"Chromium\";v=\"104\", \" Not A;Brand\";v=\"99\", \"Google Chrome\";v=\"104\"",
+  //     "sec-ch-ua-mobile": "?0",
+  //     "sec-ch-ua-platform": "\"Windows\"",
+  //     "sec-fetch-dest": "empty",
+  //     "sec-fetch-mode": "cors",
+  //     "sec-fetch-site": "same-origin"
+  //   },
+  //   "body": "{\n  \"meteringPoints\": {\n    \"meteringPoint\": [\n      \"571313175100502542\"\n    ]\n  }\n}",
+  // })
+  // invariant(
+  //   response.status === 200,
+  //   `HTTP Status: ${response.status} ${response.statusText}, ${response.url}`
+  // );
+
+  // const meteringPointTimeSeries = await response.json()
+
+  const meteringPointTimeSeriesResponse = (await api.api.meterdataGettimeseriesCreate(
+    formatDateISO(oneMonthAgo),
+    formatDateISO(start),
     "Day",
-    meteringPointsRequest,
-    authorizedRequestArgs
-  );
+    meteringPointsRequest
+  ))
+
+  only200(meteringPointTimeSeriesResponse)
+
+  const meteringPointTimeSeries = meteringPointTimeSeriesResponse.data.result!;
+
+
+  console.log("Done fetching meterdata timeseries of metering points");
 
   return {
-    meteringPointTimeSeriesData: meteringPointTimeSeries.data.result!,
+    meteringPointTimeSeriesData: meteringPointTimeSeries,
   };
 }
 
 export const loader = async ({}) => {
+  const dataCache = new Cache<Awaited<ReturnType<typeof getData>>>("data", null)
   const data: Awaited<ReturnType<typeof getData>> =
-    await getData()
-    // await dataCache.getOrFetchItem(getData)
+  await getData()
+  // await dataCache.getOrFetchItem(getData)
 
   return data;
 };
@@ -98,12 +134,12 @@ export default function Index() {
       style={{
         fontFamily: "system-ui, sans-serif",
         lineHeight: "1.4",
-        whiteSpace: "pre",
+        whiteSpace: "pre-wrap",
       }}
     >
       <svg
         ref={svgRef}
-        width={`calc(100vw)`}
+        width="calc(100vw)"
         height={400}
         viewBox={`0 0 ${svgWidth} 200`}
       >
@@ -145,10 +181,18 @@ export default function Index() {
   );
 }
 
+function only200(response: Response) {
+  invariant(
+    response.status === 200,
+    `HTTP Status: ${response.status} ${response.statusText}, ${response.url}`
+  );
+}
+
+
 async function getAccessToken(baseAPI: string, refreshToken: string) {
   console.log(" ⚠️ Token expired or not found, fetching new token");
 
-  const response = await fetch(baseAPI + "api/token", {
+  const response = await fetch(baseAPI + "/api/token", {
     headers: {
       Authorization: `Bearer ${refreshToken}`,
     },
@@ -165,6 +209,10 @@ async function getAccessToken(baseAPI: string, refreshToken: string) {
 
 function formatDate(date: Date) {
   return date.toISOString().split("T")[0].split("-").reverse().join("-");
+}
+
+function formatDateISO(date: Date) {
+  return date.toISOString().split("T")[0];
 }
 
 function formatDateRelative(date: Date) {
