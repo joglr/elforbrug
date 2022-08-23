@@ -1,98 +1,47 @@
 import { useLoaderData } from "@remix-run/react";
 import {
-  EloverblikApi, RequestParams,
+  EloverblikApi
   // MeteringPointApiDtoListApiResponse,
   // MeteringPointDetailsCustomerDtoResponseListApiResponse,
 } from "~/eloverblik-api";
 import invariant from "tiny-invariant";
-import fs from "fs";
 import { useDimensions } from "~/hooks";
 import { useRef } from "react";
-
-const cachePath = "./.cache/cache.json";
-// asyncHelper(fs.promises.mkdir(cachePath, { recursive: true }));
-
-async function readFromCache<T>(key: string): Promise<T | null> {
-  if (!fs.existsSync(cachePath)) {
-    return null;
-  }
-  const cache = await asyncHelper(fs.promises.readFile(cachePath, "utf8"));
-  if (!cache) {
-    return null;
-  }
-  const parsed = JSON.parse(cache);
-  const value = parsed[key];
-  return value ?? null;
-}
-async function writeToCache(key: string, value: any) {
-  const parsed = JSON.parse(
-    (await asyncHelper(fs.promises.readFile(cachePath, "utf8"))) ?? "{}"
-  );
-  parsed[key] = value;
-  fs.writeFileSync(cachePath, JSON.stringify(parsed));
-}
-
-// Persist cache to file system
-// const cachedFetch: (
-//   input: URL | RequestInfo,
-//   init?: RequestInit | undefined
-// ) => Promise<Response> = async (input, options) => {
-//   const key = input + JSON.stringify(options);
-//   const cached = await readFromCache(key);
-//   if (cached) {
-//     return cached as Response;
-//   }
-//   const response = await fetch(input, options);
-
-//   // Cache successful responses
-//   if (response.status === 200) {
-//     await writeToCache(key, response);
-//   }
-//   return response;
-// };
+import { Cache } from "~/cache.server";
 
 async function getData() {
-  const baseAPI = "https://api.eloverblik.dk/customerapi/";
-
-  console.log("Fetching access token");
-
+  const tokenCache = new Cache<string>("token", 24 * 60 * 60 * 1000);
+  const baseAPI = "https://api.eloverblik.dk/customerapi";
   const refreshToken = process.env.EL_TOKEN;
 
+  invariant(refreshToken, "Missing refresh token, specify it as EL_TOKEN environment variable");
+
+  const accessToken = await tokenCache.getOrFetchItem(async () => await getAccessToken(baseAPI, refreshToken))
+
+  const headers: HeadersInit = {
+    Authorization: `Bearer ${accessToken}`,
+    "Content-Type": "application/json",
+    "Accept": "application/json"
+  }
   const api = new EloverblikApi({
     baseUrl: baseAPI,
-    // customFetch: cachedFetch,
-  });
-
-  const response = await fetch(baseAPI + "api/token", {
-    headers: {
-      Authorization: `Bearer ${refreshToken}`,
+    baseApiParams: {
+      headers,
+      format: undefined
     },
   });
-  // console.log("💩", response.status);
-  invariant(
-    response.status === 200,
-    `HTTP Status: ${response.status} ${response.statusText}`
-  );
 
-  const { result: accessToken } = await response.json();
-
-  const authorizedRequestArgs: RequestParams = {
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-    }
-  };
-
-  // console.log(accessToken)
   invariant(accessToken, "No access token");
 
   console.log("Fetching list of metering points");
   const meteringEndpointsResult =
-    await api.api.meteringpointsMeteringpointsList({}, authorizedRequestArgs);
+    await api.api.meteringpointsMeteringpointsList({});
   // console.log(meteringEndpoints.data)
   const meteringEndpoints = meteringEndpointsResult.data.result!;
-  // console.log(meteringEndpoints);
 
-  const meteringPointIDs = meteringEndpoints.map((mp) => mp.meteringPointId!);
+  console.log("Done fetching list of metering points. Metering points:", meteringEndpoints.length);
+
+  const meteringPointIDs = meteringEndpoints.map((mp) => (mp.meteringPointId!));
   const meteringPointsRequest = {
     meteringPoints: {
       meteringPoint: meteringPointIDs,
@@ -100,31 +49,35 @@ async function getData() {
   };
 
   const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
   const oneMonthAgo = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-
   console.log("Fetching meterdata timeseries of metering points");
-  const meteringPointTimeSeries = await api.api.meterdataGettimeseriesCreate(
-    formatDate(oneMonthAgo),
-    formatDate(now),
+
+  const meteringPointTimeSeriesResponse = (await api.api.meterdataGettimeseriesCreate(
+    formatDateISO(oneMonthAgo),
+    formatDateISO(start),
     "Day",
-    meteringPointsRequest,
-    authorizedRequestArgs
-  );
+    meteringPointsRequest
+  ))
+
+  only200(meteringPointTimeSeriesResponse)
+
+  const meteringPointTimeSeries = meteringPointTimeSeriesResponse.data.result!;
+
+
+  console.log("Done fetching meterdata timeseries of metering points");
 
   return {
-    meteringPointTimeSeriesData: meteringPointTimeSeries.data.result!,
+    meteringPointTimeSeriesData: meteringPointTimeSeries,
   };
 }
 
 export const loader = async ({}) => {
-  if (!fs.existsSync("./.cache")) {
-    fs.mkdirSync("./.cache");
-  }
-
+  const dataCache = new Cache<Awaited<ReturnType<typeof getData>>>("data", null)
   const data: Awaited<ReturnType<typeof getData>> =
-    (await readFromCache("data")) ??
-     (await getData());
-  await writeToCache("data", data);
+  await getData()
+  // await dataCache.getOrFetchItem(getData)
+
   return data;
 };
 
@@ -143,7 +96,6 @@ export default function Index() {
     )
   );
   const period = energyData.TimeSeries![0].Period!;
-  // log bar width
   const labelMarginLeft = 15;
 
   return (
@@ -151,12 +103,12 @@ export default function Index() {
       style={{
         fontFamily: "system-ui, sans-serif",
         lineHeight: "1.4",
-        whiteSpace: "pre",
+        whiteSpace: "pre-wrap",
       }}
     >
       <svg
         ref={svgRef}
-        width={`calc(100vw)`}
+        width="calc(100vw)"
         height={400}
         viewBox={`0 0 ${svgWidth} 200`}
       >
@@ -198,8 +150,38 @@ export default function Index() {
   );
 }
 
+function only200(response: Response) {
+  invariant(
+    response.status === 200,
+    `HTTP Status: ${response.status} ${response.statusText}, ${response.url}`
+  );
+}
+
+
+async function getAccessToken(baseAPI: string, refreshToken: string) {
+  console.log(" ⚠️ Token expired or not found, fetching new token");
+
+  const response = await fetch(baseAPI + "/api/token", {
+    headers: {
+      Authorization: `Bearer ${refreshToken}`,
+    },
+  });
+
+  invariant(
+    response.status === 200,
+    `HTTP Status: ${response.status} ${response.statusText}, ${response.url}`
+  );
+
+  const { result: accessToken } = await response.json();
+  return accessToken;
+}
+
 function formatDate(date: Date) {
   return date.toISOString().split("T")[0].split("-").reverse().join("-");
+}
+
+function formatDateISO(date: Date) {
+  return date.toISOString().split("T")[0];
 }
 
 function formatDateRelative(date: Date) {
