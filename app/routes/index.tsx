@@ -8,6 +8,7 @@ import invariant from "tiny-invariant";
 import fs from "fs";
 import { useDimensions } from "~/hooks";
 import { useRef } from "react";
+import { Cache } from "~/cache.server";
 
 const cachePath = "./.cache/cache.json";
 // asyncHelper(fs.promises.mkdir(cachePath, { recursive: true }));
@@ -51,30 +52,22 @@ async function writeToCache(key: string, value: any) {
 //   return response;
 // };
 
+// Create a new cache that expires after 24 hours
+const tokenCache = new Cache<string>("token", 24 * 60 * 60 * 1000);
+
 async function getData() {
   const baseAPI = "https://api.eloverblik.dk/customerapi/";
-
-  console.log("Fetching access token");
-
   const refreshToken = process.env.EL_TOKEN;
+
+  invariant(refreshToken, "Missing refresh token, specify it as EL_TOKEN environment variable");
 
   const api = new EloverblikApi({
     baseUrl: baseAPI,
     // customFetch: cachedFetch,
   });
 
-  const response = await fetch(baseAPI + "api/token", {
-    headers: {
-      Authorization: `Bearer ${refreshToken}`,
-    },
-  });
-  // console.log("💩", response.status);
-  invariant(
-    response.status === 200,
-    `HTTP Status: ${response.status} ${response.statusText}`
-  );
-
-  const { result: accessToken } = await response.json();
+  const accessToken = tokenCache.getItem() ?? await getAccessToken(baseAPI, refreshToken)
+  tokenCache.setItem(accessToken);
 
   const authorizedRequestArgs: RequestParams = {
     headers: {
@@ -143,7 +136,6 @@ export default function Index() {
     )
   );
   const period = energyData.TimeSeries![0].Period!;
-  // log bar width
   const labelMarginLeft = 15;
 
   return (
@@ -196,6 +188,24 @@ export default function Index() {
       {/* {JSON.stringify(data, null, 2)} */}
     </div>
   );
+}
+
+async function getAccessToken(baseAPI: string, refreshToken: string) {
+  console.log(" ⚠️ Token expired or not found, fetching new token");
+
+  const response = await fetch(baseAPI + "api/token", {
+    headers: {
+      Authorization: `Bearer ${refreshToken}`,
+    },
+  });
+
+  invariant(
+    response.status === 200,
+    `HTTP Status: ${response.status} ${response.statusText}, ${response.url}`
+  );
+
+  const { result: accessToken } = await response.json();
+  return accessToken;
 }
 
 function formatDate(date: Date) {
