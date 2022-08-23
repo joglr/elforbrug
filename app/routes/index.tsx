@@ -75,8 +75,7 @@ async function getData() {
 export const loader = async ({}) => {
   const dataCache = new Cache<Awaited<ReturnType<typeof getData>>>("data", null)
   const data: Awaited<ReturnType<typeof getData>> =
-  await getData()
-  // await dataCache.getOrFetchItem(getData)
+  await dataCache.getOrFetchItem(getData)
 
   return data;
 };
