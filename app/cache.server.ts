@@ -7,18 +7,15 @@ import { join } from "path";
 
 export class Cache<T> {
   private key: string;
-  private ttl: number;
+  private ttl: number | null;
   private cacheDir: string;
   private cacheFile: string;
 
-  constructor(key: string, ttl: number) {
+  constructor(key: string, ttl: number | null = null) {
     this.key = key;
     this.ttl = ttl;
     this.cacheDir = join(__dirname, "..", ".cache");
     this.cacheFile = join(this.cacheDir, `${this.key}.json`);
-    console.log("🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳")
-    console.log(this.cacheFile)
-    console.log("🥳🥳🥳🥳🥳🥳🥳🥳🥳🥳")
   }
   public getItem(): T | null {
     if (!fs.existsSync(this.cacheDir)) {
@@ -33,18 +30,27 @@ export class Cache<T> {
     const cacheData = JSON.parse(data) as { ttl: number; value: T };
 
     // If the cache has expired, clear it and return null
-    if (cacheData.ttl < Date.now()) {
+    if (cacheData.ttl && cacheData.ttl < Date.now()) {
         this.clearItem();
         return null;
     }
     return cacheData.value;
   }
+
+  public async getOrFetchItem(getter: () => Promise<T>): Promise<T> {
+    const cachedItem = this.getItem();
+    if (cachedItem) return cachedItem;
+    const item = await getter();
+    this.setItem(item);
+    return item;
+  }
+
   public setItem(value: T): void {
     if (!fs.existsSync(this.cacheDir)) {
       fs.mkdirSync(this.cacheDir);
     }
     const cacheData = {
-      ttl: Date.now() + this.ttl,
+      ttl: this.ttl === null ? null : Date.now() + this.ttl,
       value: value,
     };
     fs.writeFileSync(this.cacheFile, JSON.stringify(cacheData));

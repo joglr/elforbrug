@@ -1,59 +1,19 @@
 import { useLoaderData } from "@remix-run/react";
+import type { RequestParams} from "~/eloverblik-api";
 import {
-  EloverblikApi, RequestParams,
+  EloverblikApi
   // MeteringPointApiDtoListApiResponse,
   // MeteringPointDetailsCustomerDtoResponseListApiResponse,
 } from "~/eloverblik-api";
 import invariant from "tiny-invariant";
-import fs from "fs";
 import { useDimensions } from "~/hooks";
 import { useRef } from "react";
 import { Cache } from "~/cache.server";
 
-const cachePath = "./.cache/cache.json";
-// asyncHelper(fs.promises.mkdir(cachePath, { recursive: true }));
-
-async function readFromCache<T>(key: string): Promise<T | null> {
-  if (!fs.existsSync(cachePath)) {
-    return null;
-  }
-  const cache = await asyncHelper(fs.promises.readFile(cachePath, "utf8"));
-  if (!cache) {
-    return null;
-  }
-  const parsed = JSON.parse(cache);
-  const value = parsed[key];
-  return value ?? null;
-}
-async function writeToCache(key: string, value: any) {
-  const parsed = JSON.parse(
-    (await asyncHelper(fs.promises.readFile(cachePath, "utf8"))) ?? "{}"
-  );
-  parsed[key] = value;
-  fs.writeFileSync(cachePath, JSON.stringify(parsed));
-}
-
-// Persist cache to file system
-// const cachedFetch: (
-//   input: URL | RequestInfo,
-//   init?: RequestInit | undefined
-// ) => Promise<Response> = async (input, options) => {
-//   const key = input + JSON.stringify(options);
-//   const cached = await readFromCache(key);
-//   if (cached) {
-//     return cached as Response;
-//   }
-//   const response = await fetch(input, options);
-
-//   // Cache successful responses
-//   if (response.status === 200) {
-//     await writeToCache(key, response);
-//   }
-//   return response;
-// };
-
 // Create a new cache that expires after 24 hours
 const tokenCache = new Cache<string>("token", 24 * 60 * 60 * 1000);
+// Create a new cache that never expires
+const dataCache = new Cache<Awaited<ReturnType<typeof getData>>>("data", null)
 
 async function getData() {
   const baseAPI = "https://api.eloverblik.dk/customerapi/";
@@ -66,8 +26,7 @@ async function getData() {
     // customFetch: cachedFetch,
   });
 
-  const accessToken = tokenCache.getItem() ?? await getAccessToken(baseAPI, refreshToken)
-  tokenCache.setItem(accessToken);
+  const accessToken = await tokenCache.getOrFetchItem(async () => await getAccessToken(baseAPI, refreshToken))
 
   const authorizedRequestArgs: RequestParams = {
     headers: {
@@ -110,14 +69,10 @@ async function getData() {
 }
 
 export const loader = async ({}) => {
-  if (!fs.existsSync("./.cache")) {
-    fs.mkdirSync("./.cache");
-  }
-
   const data: Awaited<ReturnType<typeof getData>> =
-    (await readFromCache("data")) ??
-     (await getData());
-  await writeToCache("data", data);
+    await getData()
+    // await dataCache.getOrFetchItem(getData)
+
   return data;
 };
 
