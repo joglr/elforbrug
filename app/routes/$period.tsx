@@ -142,6 +142,7 @@ export default function Index() {
             electricityUsageData.TimeSeries![0]["measurement_Unit.name"]
           }`;
           const height = (quantity / barMax) * 200;
+          const endDate = new Date(point.timeInterval?.end!);
           return (
             <g key={index} transform={`translate(${index * barWidth}, 0)`}>
               <rect
@@ -163,7 +164,10 @@ export default function Index() {
               >
                 {/* {index} */}
                 {/* {formatDateRelative(new Date(point.timeInterval?.start!))} */}
-                {formatDate(new Date(point.timeInterval?.end!))}
+                {formatDate(endDate)}
+                <title>
+                  {endDate.toISOString()}
+                </title>
               </text>
             </g>
           );
