@@ -71,8 +71,16 @@ async function getData(
   const period = periods[periodPath];
 
   const now = new Date();
-  const toDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
-  const fromDate = new Date(toDate.getTime() - period.offset);
+  // const toDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+  // const fromDate = new Date(toDate.getTime() - period.offset);
+
+  // TODO: Improve date calculation logic
+  // For some reason, the API does not return data if the interval is from yesterday to today
+  // Temporary fix: Offset by one day
+  const toDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const fromDate = new Date(
+    toDate.getTime() - period.offset - 24 * 60 * 60 * 1000
+  );
   const aggregation = period.aggregation;
   const key = `${formatDateISO(fromDate)}-${formatDateISO(
     toDate
@@ -173,8 +181,6 @@ export default function Index() {
                 alignmentBaseline="middle"
                 fontSize="16px"
               >
-                {/* {index} */}
-                {/* {formatDateRelative(new Date(point.timeInterval?.start!))} */}
                 {formatDate(endDate)}
                 <title>
                   {endDate.toISOString()}
