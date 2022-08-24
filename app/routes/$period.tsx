@@ -1,12 +1,6 @@
-import {
-  Link,
-  useLoaderData,
-} from "@remix-run/react";
-import {
-  EloverblikApi,
-  // MeteringPointApiDtoListApiResponse,
-  // MeteringPointDetailsCustomerDtoResponseListApiResponse,
-} from "~/eloverblik-api";
+import { Link, useLoaderData } from "@remix-run/react";
+import type { MyEnergyDataMarketDocument } from "~/eloverblik-api";
+import { EloverblikApi } from "~/eloverblik-api";
 import invariant from "tiny-invariant";
 import { useDimensions } from "~/hooks";
 import { useRef } from "react";
@@ -14,13 +8,9 @@ import { Cache } from "~/cache.server";
 import type { LoaderFunction } from "@remix-run/node";
 import { periods } from "~/constants";
 
-// List of periods
-// 30 days, aggregation: Day
-// 14 days, aggregation: Day
-// 7 days, aggregation: Day
-// 24 hours, aggregation: Hour
-
-async function getData(period: keyof typeof periods) {
+async function getData(
+  periodPath: keyof typeof periods
+): Promise<MyEnergyDataMarketDocument> {
   const tokenCache = new Cache<string>("token", 24 * 60 * 60 * 1000);
   const baseAPI = "https://api.eloverblik.dk/customerapi";
   const refreshToken = process.env.EL_TOKEN;
@@ -67,61 +57,69 @@ async function getData(period: keyof typeof periods) {
     },
   };
 
+  const period = periods[periodPath];
+
   const now = new Date();
-  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
-  const oneMonthAgo = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-  console.log("Fetching meterdata timeseries of metering points");
+  const toDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+  const fromDate = new Date(toDate.getTime() - period.offset);
+  const aggregation = period.aggregation;
+  const key = `${formatDateISO(fromDate)}-${formatDateISO(
+    toDate
+  )}-${aggregation}`;
 
-  const meteringPointTimeSeriesResponse =
-    await api.api.meterdataGettimeseriesCreate(
-      formatDateISO(oneMonthAgo),
-      formatDateISO(start),
-      "Day",
-      meteringPointsRequest
-    );
+  const timeSeriesCache = new Cache<
+    NonNullable<
+      NonNullable<
+        Awaited<
+          ReturnType<typeof api.api.meterdataGettimeseriesCreate>
+        >["data"]["result"]
+      >[0]["MyEnergyData_MarketDocument"]
+    >
+  >(key, 60 * 60 * 1000);
 
-  only200(meteringPointTimeSeriesResponse);
+  const meteringPointTimeSeries = await timeSeriesCache.getOrFetchItem(
+    async () => {
+      console.log("Fetching meterdata timeseries of metering points");
+      const result = await api.api.meterdataGettimeseriesCreate(
+        formatDateISO(fromDate),
+        formatDateISO(toDate),
+        aggregation,
+        meteringPointsRequest
+      );
 
-  const meteringPointTimeSeries = meteringPointTimeSeriesResponse.data.result!;
+      only200(result);
+      return result.data.result![0].MyEnergyData_MarketDocument!;
+    }
+  );
 
   console.log("Done fetching meterdata timeseries of metering points");
 
-  return {
-    meteringPointTimeSeriesData: meteringPointTimeSeries,
-  };
+  return meteringPointTimeSeries;
 }
 
 export const loader: LoaderFunction = async ({ params }) => {
-  const { period } = params
+  const { period } = params;
 
   invariant(period, "Missing period");
 
-  const dataCache = new Cache<Awaited<ReturnType<typeof getData>>>(
-    "data",
-    null
-  );
-  const data: Awaited<ReturnType<typeof getData>> =
-    await dataCache.getOrFetchItem(async () =>  await getData(period as keyof typeof periods)
-    );
-
-  return data;
+  return await getData(period as keyof typeof periods);
 };
 
 export default function Index() {
-  const data = useLoaderData<ReturnType<typeof getData>>();
   const svgRef = useRef<SVGSVGElement>(null);
+  const electricityUsageData = useLoaderData<ReturnType<typeof getData>>();
+  const period = electricityUsageData.TimeSeries![0].Period!;
   const { width: svgWidth } = useDimensions(svgRef);
-  const energyData =
-    data.meteringPointTimeSeriesData[0].MyEnergyData_MarketDocument!;
-  const barWidth = svgWidth / energyData.TimeSeries![0].Period!.length;
+
+  const barWidth =
+    svgWidth / electricityUsageData.TimeSeries![0].Period!.length;
   const chartHeight = 200;
   const barMargin = 1;
   const barMax = Math.max(
-    ...energyData.TimeSeries![0].Period!.map((p) =>
+    ...electricityUsageData.TimeSeries![0].Period!.map((p) =>
       Number(p.Point![0]["out_Quantity.quantity"])
     )
   );
-  const period = energyData.TimeSeries![0].Period!;
   const labelMarginLeft = 15;
 
   return (
@@ -141,14 +139,11 @@ export default function Index() {
         {period.map((point, index) => {
           const quantity = Number(point.Point![0]["out_Quantity.quantity"]);
           const label = `${point.Point![0]["out_Quantity.quantity"]} ${
-            energyData.TimeSeries![0]["measurement_Unit.name"]
+            electricityUsageData.TimeSeries![0]["measurement_Unit.name"]
           }`;
           const height = (quantity / barMax) * 200;
           return (
-            <g
-              key={point.timeInterval?.start!}
-              transform={`translate(${index * barWidth}, 0)`}
-            >
+            <g key={index} transform={`translate(${index * barWidth}, 0)`}>
               <rect
                 x={barMargin}
                 y={chartHeight - height}
