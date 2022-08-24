@@ -157,7 +157,7 @@ export default function Index() {
       <svg
         ref={svgRef}
         width="calc(100vw)"
-        height={400}
+        height={500}
         viewBox={`0 0 ${svgWidth} 200`}
       >
         {period.map((point, index) => {

@@ -42,7 +42,7 @@ export const periods = asPeriodTypes({
   "7D": {
     label: "7D",
     aggregation: "Day",
-    offset: 7 * 24 * 60 * 60 * 1000,
+    offset: 8 * 24 * 60 * 60 * 1000,
     default: false,
     labelFormatOptions: {
       weekday: "short",
