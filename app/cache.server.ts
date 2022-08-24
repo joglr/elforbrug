@@ -31,14 +31,16 @@ export class Cache<T> {
 
     // If the cache has expired, clear it and return null
     if (cacheData.ttl && cacheData.ttl < Date.now()) {
+      if (process.env.NODE_ENV !== "development") {
         this.clearItem();
-        return null;
+      }
+      return null;
     }
     return cacheData.value;
   }
 
   public async getOrFetchItem(getter: () => Promise<T>): Promise<T> {
-    if (process.env.NODE_ENV !== "development") return await getter()
+    if (process.env.NODE_ENV !== "development") return await getter();
     const cachedItem = this.getItem();
     if (cachedItem) return cachedItem;
     const item = await getter();

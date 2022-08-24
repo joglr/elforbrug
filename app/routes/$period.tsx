@@ -39,18 +39,29 @@ async function getData(
 
   invariant(accessToken, "No access token");
 
-  console.log("Fetching list of metering points");
-  const meteringEndpointsResult =
-    await api.api.meteringpointsMeteringpointsList({});
-  // console.log(meteringEndpoints.data)
-  const meteringEndpoints = meteringEndpointsResult.data.result!;
-
-  console.log(
-    "Done fetching list of metering points. Metering points:",
-    meteringEndpoints.length
+  const meteringPointsIDCache = new Cache<string[]>(
+    "meteringPointsID",
+    24 * 60 * 60 * 1000
   );
 
-  const meteringPointIDs = meteringEndpoints.map((mp) => mp.meteringPointId!);
+  const meteringPointIDs = await meteringPointsIDCache.getOrFetchItem(
+    async () => {
+      console.log("Fetching list of metering points");
+      const meteringEndpointsResult =
+        await api.api.meteringpointsMeteringpointsList({});
+      const meteringEndpoints = meteringEndpointsResult.data.result!;
+
+      console.log(
+        "Done fetching list of metering points. Metering points:",
+        meteringEndpoints.length
+      );
+
+      const meteringPointIDs = meteringEndpoints.map(
+        (mp) => mp.meteringPointId!
+      );
+      return meteringPointIDs;
+    }
+  );
   const meteringPointsRequest = {
     meteringPoints: {
       meteringPoint: meteringPointIDs,
