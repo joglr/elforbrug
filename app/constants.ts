@@ -1,4 +1,17 @@
-export const periods = {
+export type Aggregation =
+  | "Actual"
+  | "Quarter"
+  | "Hour"
+  | "Day"
+  | "Month"
+  | "Year";
+
+export const periods: Record<string, {
+  label: string,
+  aggregation: Aggregation;
+  offset: number,
+  default: boolean
+}> = {
   "30D": {
     label: "30D",
     aggregation: "Day",
