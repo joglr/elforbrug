@@ -70,17 +70,15 @@ async function getData(
 
   const period = periods[periodPath];
 
-  const now = new Date();
-  // const toDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
-  // const fromDate = new Date(toDate.getTime() - period.offset);
-
   // TODO: Improve date calculation logic
   // For some reason, the API does not return data if the interval is from yesterday to today
-  // Temporary fix: Offset by one day
-  const toDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const fromDate = new Date(
-    toDate.getTime() - period.offset - 24 * 60 * 60 * 1000
-  );
+  // For example, the last 12 months should show the previous 11 months + the current month
+
+  const now = new Date();
+  const toDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+  const fromDate = new Date(toDate.getTime() - period.offset);
+
+
   const aggregation = period.aggregation;
   const key = `${formatDateISO(fromDate)}-${formatDateISO(
     toDate
@@ -116,23 +114,30 @@ async function getData(
   return meteringPointTimeSeries;
 }
 
-export const loader: LoaderFunction = async ({ params }) => {
-  const { period } = params;
+// TODO: Figure out if you can use another type than any
+export const loader = async ({ params } : any) => {
+  // TODO: Verify that is is a valid period
+  const period : keyof typeof periods = params.period;
 
   invariant(period, "Missing period");
 
-  return await getData(period as keyof typeof periods);
+
+  return {
+    period,
+    data: await getData(period)
+  };
 };
 
 export default function Index() {
   const svgRef = useRef<SVGSVGElement>(null);
-  const electricityUsageData = useLoaderData<ReturnType<typeof getData>>();
+  const loaderData = useLoaderData<typeof loader>();
+  const { period: periodPath, data: electricityUsageData } = loaderData
   const period = electricityUsageData.TimeSeries![0].Period!;
   const { width: svgWidth } = useDimensions(svgRef);
 
   const barWidth =
     svgWidth / electricityUsageData.TimeSeries![0].Period!.length;
-  const chartHeight = 200;
+  const chartHeight = 100;
   const barMargin = 1;
   const barMax = Math.max(
     ...electricityUsageData.TimeSeries![0].Period!.map((p) =>
@@ -161,6 +166,7 @@ export default function Index() {
             electricityUsageData.TimeSeries![0]["measurement_Unit.name"]
           }`;
           const height = (quantity / barMax) * 200;
+          const startDate = new Date(point.timeInterval?.start!)
           const endDate = new Date(point.timeInterval?.end!);
           return (
             <g key={index} transform={`translate(${index * barWidth}, 0)`}>
@@ -181,10 +187,9 @@ export default function Index() {
                 alignmentBaseline="middle"
                 fontSize="16px"
               >
-                {formatDate(endDate)}
-                <title>
-                  {endDate.toISOString()}
-                </title>
+                {/* <title> */}
+                  {startDate.toLocaleString("da-DK", periods[periodPath].labelFormatOptions)}
+                {/* </title> */}
               </text>
             </g>
           );
@@ -230,7 +235,8 @@ async function getAccessToken(baseAPI: string, refreshToken: string) {
 }
 
 function formatDate(date: Date) {
-  return date.toISOString().split("T")[0].split("-").reverse().join("-");
+  return date.toLocaleDateString()
+  // .split("T")[0].split("-").reverse().join("-");
 }
 
 function formatDateISO(date: Date) {
