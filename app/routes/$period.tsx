@@ -184,12 +184,19 @@ export default function Index() {
                 alignmentBaseline="middle"
                 fontSize="16px"
               >
-                {/* <title> */}
                 {startDate.toLocaleString(
                   "da-DK",
                   periods[periodPath].labelFormatOptions
                 )}
-                {/* </title> */}
+                {periods[periodPath].aggregation === "Day" ? (
+                  <title>
+                    {startDate.toLocaleString("da-DK", {
+                      dateStyle: "full",
+                      timeStyle: "short",
+                    })}
+                  </title>
+                ) : null}
+                {/* TODO: Consider whether 24H view needs a title */}
               </text>
             </g>
           );
