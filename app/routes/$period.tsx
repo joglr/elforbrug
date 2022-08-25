@@ -5,7 +5,7 @@ import invariant from "tiny-invariant";
 import { useDimensions } from "~/hooks";
 import { useRef } from "react";
 import { Cache } from "~/cache.server";
-import type { LoaderFunction } from "@remix-run/node";
+import type { DataFunctionArgs } from "@remix-run/node";
 import { periods } from "~/constants";
 
 async function getData(
@@ -78,7 +78,6 @@ async function getData(
   const toDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
   const fromDate = new Date(toDate.getTime() - period.offset);
 
-
   const aggregation = period.aggregation;
   const key = `${formatDateISO(fromDate)}-${formatDateISO(
     toDate
@@ -114,24 +113,22 @@ async function getData(
   return meteringPointTimeSeries;
 }
 
-// TODO: Figure out if you can use another type than any
-export const loader = async ({ params } : any) => {
+export const loader = async ({ params }: DataFunctionArgs) => {
   // TODO: Verify that is is a valid period
-  const period : keyof typeof periods = params.period;
+  const period = params.period as keyof typeof periods;
 
   invariant(period, "Missing period");
 
-
   return {
     period,
-    data: await getData(period)
+    data: await getData(period),
   };
 };
 
 export default function Index() {
   const svgRef = useRef<SVGSVGElement>(null);
   const loaderData = useLoaderData<typeof loader>();
-  const { period: periodPath, data: electricityUsageData } = loaderData
+  const { period: periodPath, data: electricityUsageData } = loaderData;
   const period = electricityUsageData.TimeSeries![0].Period!;
   const { width: svgWidth } = useDimensions(svgRef);
 
@@ -166,8 +163,7 @@ export default function Index() {
             electricityUsageData.TimeSeries![0]["measurement_Unit.name"]
           }`;
           const height = (quantity / barMax) * 200;
-          const startDate = new Date(point.timeInterval?.start!)
-          const endDate = new Date(point.timeInterval?.end!);
+          const startDate = new Date(point.timeInterval?.start!);
           return (
             <g key={index} transform={`translate(${index * barWidth}, 0)`}>
               <rect
@@ -188,7 +184,10 @@ export default function Index() {
                 fontSize="16px"
               >
                 {/* <title> */}
-                  {startDate.toLocaleString("da-DK", periods[periodPath].labelFormatOptions)}
+                {startDate.toLocaleString(
+                  "da-DK",
+                  periods[periodPath].labelFormatOptions
+                )}
                 {/* </title> */}
               </text>
             </g>
@@ -234,31 +233,17 @@ async function getAccessToken(baseAPI: string, refreshToken: string) {
   return accessToken;
 }
 
-function formatDate(date: Date) {
-  return date.toLocaleDateString()
-  // .split("T")[0].split("-").reverse().join("-");
-}
-
 function formatDateISO(date: Date) {
   return date.toISOString().split("T")[0];
 }
 
-function formatDateRelative(date: Date) {
-  const formatter = new Intl.RelativeTimeFormat("en-US", {
-    numeric: "auto",
-    style: "long",
-  });
-  const days = Math.floor(
-    (date.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)
-  );
-  return formatter.format(days, "days");
-}
-
-async function asyncHelper<T>(promise: Promise<T>) {
-  try {
-    return await promise;
-  } catch (e) {
-    console.error(e);
-    return null;
-  }
-}
+// function formatDateRelative(date: Date) {
+//   const formatter = new Intl.RelativeTimeFormat("en-US", {
+//     numeric: "auto",
+//     style: "long",
+//   });
+//   const days = Math.floor(
+//     (date.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)
+//   );
+//   return formatter.format(days, "days");
+// }
