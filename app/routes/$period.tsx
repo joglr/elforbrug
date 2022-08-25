@@ -1,4 +1,4 @@
-import { Link, useLoaderData } from "@remix-run/react";
+import { Link, useLoaderData, useTransition } from "@remix-run/react";
 import type { MyEnergyDataMarketDocument } from "~/eloverblik-api";
 import { EloverblikApi } from "~/eloverblik-api";
 import invariant from "tiny-invariant";
@@ -126,6 +126,7 @@ export const loader = async ({ params }: DataFunctionArgs) => {
 };
 
 export default function Index() {
+  const transition = useTransition();
   const svgRef = useRef<SVGSVGElement>(null);
   const loaderData = useLoaderData<typeof loader>();
   const { period: periodPath, data: electricityUsageData } = loaderData;
@@ -197,12 +198,13 @@ export default function Index() {
       <p>
         {Object.entries(periods).map(([path, p], i) => (
           <label key={p.label}>
-            <Link to={`/${path}`}>{p.label}</Link>
+            {transition.state === "idle" ? (
+              <Link to={`/${path}`}>{p.label}</Link>
+            ) : (
+              p.label
+            )}
           </label>
         ))}
-      </p>
-      <p>
-        <button type="submit">Update</button>
       </p>
     </div>
   );
